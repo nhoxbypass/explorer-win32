@@ -1,0 +1,17 @@
+﻿Build started 10/9/2016 2:01:27 PM.
+     1>Project "E:\Coding\CC++\win32\1412477_MyExplorer\1412477_MyExplorer\1412477_MyExplorer.vcxproj" on node 2 (Build target(s)).
+     1>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /sdl /Od /Oy- /D WIN32 /D _DEBUG /D _WINDOWS /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Yu"stdafx.h" /Fp"Debug\1412477_MyExplorer.pch" /Fo"Debug\\" /Fd"Debug\vc120.pdb" /Gd /TP /analyze- /errorReport:prompt 1412477_MyExplorer.cpp
+         1412477_MyExplorer.cpp
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"E:\Coding\CC++\win32\1412477_MyExplorer\Debug\1412477_MyExplorer.exe" /INCREMENTAL /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"E:\Coding\CC++\win32\1412477_MyExplorer\Debug\1412477_MyExplorer.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"E:\Coding\CC++\win32\1412477_MyExplorer\Debug\1412477_MyExplorer.lib" /MACHINE:X86 Debug\1412477_MyExplorer.res
+         Debug\1412477_MyExplorer.obj
+         Debug\DriveHelper.obj
+         Debug\DriveSize.obj
+         Debug\stdafx.obj
+         1412477_MyExplorer.vcxproj -> E:\Coding\CC++\win32\1412477_MyExplorer\Debug\1412477_MyExplorer.exe
+     1>Done Building Project "E:\Coding\CC++\win32\1412477_MyExplorer\1412477_MyExplorer\1412477_MyExplorer.vcxproj" (Build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:00.60
