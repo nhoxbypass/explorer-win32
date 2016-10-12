@@ -6,21 +6,22 @@
 #include <commctrl.h>
 #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #pragma comment(lib, "ComCtl32.lib")
-//Dùng để sử dụng hàm StrCpy, StrNCat
+//For StrCpy, StrNCat
 #include <shlwapi.h>
 #pragma comment(lib, "shlwapi.lib")
 #include <shellapi.h>
 
 #define MAX_LOADSTRING 100
-#define INITIAL_ICON_IN_TREE 8 //Tổng số icon lúc đầu trong tree, mặc định chỉ nạp những gì cần thiết
-#define NUMBER_OF_ICON_TO_GROW 0 //Số icon có thể mở rộng
+#define NUMBER_OF_INIT_ICON 8 
+#define MAX_EXPAND_ICON 3
 
 #define DEFAULT_ICON_INDEX 0
 
+//For init lv column
 #define LVCOL_DRIVE_TYPE		0
 #define LVCOL_FOLDER_TYPE		1
 
-//Độ dài tối đa đường dẫn
+//
 #define MAX_PATH_LEN 10240
 
 // Global Variables:
@@ -46,17 +47,14 @@ HWND createListView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentIn
 HWND createTreeView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentInst, int x, int y, int nWidth, int nHeight, long lStyle);
 void loadMyComputerToTree(DriveHelper *drive, HWND m_hTreeView);
 void loadMyComputerToListView(DriveHelper *drive, HWND m_hListView);
-void loadExpandedChild(HTREEITEM hCurrSelected, HWND m_hTreeView);
-LPCWSTR getPath(HTREEITEM hItem, HWND m_hTreeView);
-void loadChild(HTREEITEM &hParent, LPCWSTR path, BOOL bShowHiddenSystem, HWND m_hTreeView);
-void loadChild(HWND m_hParent, HWND m_hListView, LPCWSTR path, DriveHelper *drive);
-void displayCurrSelectedInfo(HWND m_hParent, HWND m_hListView);
-LPCWSTR getCurrPath(HWND m_hTreeView);
-void loadCurrSelected(HWND m_hListView);
-void loadFileAndFolder(HWND m_hParent, HWND m_hListView, LPCWSTR path);
-LPWSTR _GetSize(const WIN32_FIND_DATA &fd);
-void initListViewColumn(HWND m_hListView, int type);
-LPWSTR convertTimeStampToString(const FILETIME &ftLastWrite); //Convert  Active Directory timestamps (LDAP/Win32 FILETIME) to DateTime in String
+void loadExpandedChild(HTREEITEM hCurrSelected, HWND m_hTreeView); //Load all child and child of child items in treeview
+LPCWSTR getPath(HTREEITEM hItem, HWND m_hTreeView); //Get dir path of an item in Treeview
+void loadTreeviewItemAt(HTREEITEM &hParent, LPCWSTR path, HWND m_hTreeView); //Load treeview item at dir path provided
+void loadListviewItemAt(LPCWSTR path, HWND m_hParent, HWND m_hListView, DriveHelper *drive); //Load listview item at dir path provided
+void loadOrExecSelected(HWND m_hListView); //Load selected directory or execute selected file
+void loadDirItemToLisview(HWND m_hParent, HWND m_hListView, LPCWSTR path); //Load directory item to Listview
+void initListviewColumn(HWND m_hListView, int type); //Initialize Listview column (size, header text,...)
+LPWSTR convertTimeStampToString(const FILETIME &ftLastWrite); //Convert Active Directory timestamps (LDAP/Win32 FILETIME) to DateTime in String
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -179,7 +177,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 					  g_hWnd = hWnd;
 					  g_Drive = new DriveHelper();
-					  g_Drive->GetSystemDrives();
+					  g_Drive->getSystemDrives();
 					  
 					  InitCommonControls();
 
@@ -235,40 +233,32 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					  NMHDR* notifyMess = (NMHDR*)lParam; //Notification Message
 					  LPNMTREEVIEW lpnmTree = (LPNMTREEVIEW)notifyMess; //Contains information about a tree-view notification message
+					  HTREEITEM currSelected;
 
 					  switch (notifyMess->code)
 					  {
 					  case TVN_ITEMEXPANDING: //This event fire when user expand or colapse item in Tree View
 						  //Load child item of current selected child if they were not loaded before
-						  loadExpandedChild(lpnmTree->itemNew.hItem, g_hTreeView);
+						  currSelected = lpnmTree->itemNew.hItem;
+						  loadExpandedChild(currSelected, g_hTreeView);
 						  break;
 					  case TVN_SELCHANGED:
-						  TreeView_Expand(g_hTreeView, TreeView_GetNextItem(g_hTreeView, NULL, TVGN_CARET), TVE_EXPAND);
+						  //Retrieve currently selected item in TreeView
+						  currSelected = TreeView_GetSelection(g_hTreeView); //You can explicitly get by TreeView_GetNextItem with TVGN_CARET flag
+						  TreeView_Expand(g_hTreeView, currSelected, TVE_EXPAND);
+						  
 						  ListView_DeleteAllItems(g_hListView); //Clear ListView
-						  loadChild(hWnd, g_hListView, getCurrPath(g_hTreeView), g_Drive);
-						  //m_hTreeView->InsertAfterCur(g_TreeView->GetCurPath());
-
+						  loadListviewItemAt(getPath(currSelected,g_hTreeView), hWnd, g_hListView, g_Drive);
 						  break;
 
 					  case NM_CLICK:
-						  //Get hwndFrom handle that cause the event to check whether ListView sent message
-						  if (notifyMess->hwndFrom == g_hListView)
-						  {
-							  nCurSelIndex = ListView_GetNextItem(g_hListView, -1, LVNI_FOCUSED);
-							  if (nCurSelIndex != -1)
-								  displayCurrSelectedInfo(hWnd, g_hListView);
-
-						  }
-						  else
-						  {
-							  //Do nothing								  
-							  break;
-						  }
 						  break;
 
 					  case NM_DBLCLK:
+						  //Get hwndFrom for window handle to the control sending the message
+						  //To check whether this event fire by Listview
 						  if (notifyMess->hwndFrom == g_hListView)
-							  loadCurrSelected(g_hListView);
+							  loadOrExecSelected(g_hListView);
 						  break;
 					  }
 
@@ -364,7 +354,7 @@ HWND createTreeView(long lExtStyle, HWND parentWnd, long ID, HINSTANCE hParentIn
 
 	// Create the image list. 
 	himl = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK,
-		INITIAL_ICON_IN_TREE, NUMBER_OF_ICON_TO_GROW);
+		NUMBER_OF_INIT_ICON, MAX_EXPAND_ICON);
 
 	// Add the open file, closed file, and document bitmaps. 
 	hbmp = LoadBitmap(g_hInstance, MAKEINTRESOURCE(IDB_DESKTOP));
@@ -414,19 +404,19 @@ void loadMyComputerToTree(DriveHelper *drive, HWND m_hTreeView)
 	HTREEITEM hMyComputer = TreeView_InsertItem(m_hTreeView, &tvInsert);
 
 	//Load volume
-	for (int i = 0; i < g_Drive->GetCount(); ++i)
+	for (int i = 0; i < g_Drive->getCount(); ++i)
 	{
 		tvInsert.hParent = hMyComputer; //Add as children of My Computer
 		tvInsert.item.iImage = driveIconIndex;
 		tvInsert.item.iSelectedImage = driveIconIndex;
-		tvInsert.item.pszText = g_Drive->GetDisplayName(i); //Get volume label
-		tvInsert.item.lParam = (LPARAM)g_Drive->GetDriveName(i);
+		tvInsert.item.pszText = g_Drive->getDisplayName(i); //Get volume label
+		tvInsert.item.lParam = (LPARAM)g_Drive->getDriveLetter(i);
 		HTREEITEM hDrive = TreeView_InsertItem(m_hTreeView, &tvInsert);
 
-		loadChild(hDrive, getPath(hDrive, m_hTreeView), FALSE, m_hTreeView);
+		loadTreeviewItemAt(hDrive, getPath(hDrive, m_hTreeView), m_hTreeView);
 	}
 
-	//Mặc định cho My Computer expand và select luôn
+	//Expand and select My Computer
 	TreeView_Expand(m_hTreeView, hMyComputer, TVE_EXPAND);
 	TreeView_SelectItem(m_hTreeView, hMyComputer);
 }
@@ -434,56 +424,49 @@ void loadMyComputerToTree(DriveHelper *drive, HWND m_hTreeView)
 
 void loadMyComputerToListView(DriveHelper *drive, HWND m_hListView)
 {
-	SetDlgItemText(GetDlgItem(g_hWnd, IDC_ADDRESS), IDC_ADDRESS_EDIT, _T("My Computer"));
-	//InitDriveColumn();
-	//DeleteAll();
+	//Init column of Listview
+	initListviewColumn(m_hListView, LVCOL_DRIVE_TYPE);
 	LV_ITEM lv;
 
-	for (int i = 0; i < drive->GetCount(); ++i)
+	for (int i = 0; i < drive->getCount(); ++i)
 	{
 		//Let ListView know that we'r going to change item text, image and param
 		lv.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
+
+		//Load Label name and default icon to first column
 		lv.iItem = i;
 		lv.iImage = DEFAULT_ICON_INDEX;
-
 		lv.iSubItem = 0;
-		lv.pszText = drive->GetDisplayName(i);
-		lv.lParam = (LPARAM)drive->GetDriveName(i);
+		lv.pszText = drive->getDisplayName(i);
+		lv.lParam = (LPARAM)drive->getDriveLetter(i);
 		ListView_InsertItem(m_hListView, &lv);
 
 		//
 		lv.mask = LVIF_TEXT;
 
-		//First column is Date Modified
+		//Load Type of directory to second column
 		lv.iSubItem = 1;
 		lv.pszText = drive->getDriveType(i);
 		ListView_SetItem(m_hListView, &lv);
 
-		//Cột tiếp theo là Size
+		//Load total size to third column
 		lv.iSubItem = 2;
-
 		if (wcscmp(drive->getDriveType(i), CD_ROM) != 0)
 			lv.pszText = drive->getTotalSize(i);
 		else
 			lv.pszText = NULL;
-
 		ListView_SetItem(m_hListView, &lv);
 
-		//Cột cuối cùng là Free Space
+		//Load Free Space to last column
 		lv.iSubItem = 3;
-
 		if (wcscmp(drive->getDriveType(i), CD_ROM) != 0)
 			lv.pszText = drive->getFreeSpace(i);
 		else
 			lv.pszText = NULL;
 
+		//Set
 		ListView_SetItem(m_hListView, &lv);
-	}//for
-
-	TCHAR *buffer = new TCHAR[34];
-	wsprintf(buffer, _T("My Computer có tổng cộng %d ổ đĩa"), drive->GetCount());
-	//SendMessage(GetDlgItem(g_hWnd, IDC_STATUSBAR), SB_SETTEXT, 0, (LPARAM)buffer);
-	//SendMessage(GetDlgItem(g_hWnd, IDC_STATUSBAR), SB_SETTEXT, 2, (LPARAM)_T("My Computer"));
+	}
 }
 
 
@@ -523,7 +506,7 @@ void loadExpandedChild(HTREEITEM hCurrSelected, HWND m_hTreeView)
 			if (TreeView_GetChild(m_hTreeView, hCurrSelectedChild) == NULL)
 			{
 				//Load all child of Current Selected Child	
-				loadChild(hCurrSelectedChild, getPath(hCurrSelectedChild, m_hTreeView), FALSE, m_hTreeView);
+				loadTreeviewItemAt(hCurrSelectedChild, getPath(hCurrSelectedChild, m_hTreeView), m_hTreeView);
 			}
 		} 
 		while (hCurrSelectedChild = TreeView_GetNextSibling(m_hTreeView, hCurrSelectedChild));
@@ -535,13 +518,13 @@ void loadExpandedChild(HTREEITEM hCurrSelected, HWND m_hTreeView)
 		//HTREEITEM hCurrSelectedChildOfChild = TreeView_GetChild(m_hTreeView, hCurrSelectedChild);
 		if (hCurrSelectedChildOfChild == NULL)
 		{
-			loadChild(hCurrSelectedChild, getPath(hCurrSelectedChild, m_hTreeView), FALSE, m_hTreeView);
+			loadTreeviewItemAt(hCurrSelectedChild, getPath(hCurrSelectedChild, m_hTreeView), FALSE, m_hTreeView);
 
 			while (hCurrSelectedChild = TreeView_GetNextSibling(m_hTreeView, hCurrSelectedChild))
 			{
 				if (TreeView_GetChild(m_hTreeView, hCurrSelectedChild) == NULL)
 				{
-					loadChild(hCurrSelectedChild, getPath(hCurrSelectedChild, m_hTreeView), FALSE, m_hTreeView);
+					loadTreeviewItemAt(hCurrSelectedChild, getPath(hCurrSelectedChild, m_hTreeView), FALSE, m_hTreeView);
 				}
 			}
 		}
@@ -550,17 +533,18 @@ void loadExpandedChild(HTREEITEM hCurrSelected, HWND m_hTreeView)
 	else
 	{
 		//Possitively will not happen :D
-		loadChild(hCurrSelected, getPath(hCurrSelected, m_hTreeView), FALSE, m_hTreeView);
+		loadTreeviewItemAt(hCurrSelected, getPath(hCurrSelected, m_hTreeView), m_hTreeView);
 	}
 }
 
-void loadChild(HTREEITEM &hParent, LPCWSTR path, BOOL bShowHiddenSystem, HWND m_hTreeView)
+void loadTreeviewItemAt(HTREEITEM &hParent, LPCWSTR path, HWND m_hTreeView)
 {
+	//Get path
 	TCHAR buffer[MAX_PATH_LEN];
 	StrCpy(buffer, path); //Copy the path of item (include drive letter path)
-
 	StrCat(buffer, _T("\\*")); //Add to find all item in directory
 
+	//Insert new item to TreeView
 	TV_INSERTSTRUCT tvInsert;
 	tvInsert.hParent = hParent;
 	tvInsert.hInsertAfter = TVI_SORT;
@@ -569,48 +553,52 @@ void loadChild(HTREEITEM &hParent, LPCWSTR path, BOOL bShowHiddenSystem, HWND m_
 	tvInsert.item.iSelectedImage = DEFAULT_ICON_INDEX;
 
 	WIN32_FIND_DATA ffd; //Contains information about the file that is found by Find first file and Find next file
-	HANDLE hFile = FindFirstFileW(buffer, &ffd);
-	BOOL bFound = 1;
+	HANDLE hFind = FindFirstFileW(buffer, &ffd);
 
-	if (hFile == INVALID_HANDLE_VALUE)
-		bFound = FALSE;
+	//If the function fails or fails to locate files from the search string
+	if (hFind == INVALID_HANDLE_VALUE)
+		return;
 
 	TCHAR* folderPath;
-	while (bFound)
+
+	do 
 	{
 		DWORD fileAttribute = ffd.dwFileAttributes;
-		if ((fileAttribute & FILE_ATTRIBUTE_DIRECTORY ) //Get only directory file and compressed file
-			&& (fileAttribute != FILE_ATTRIBUTE_HIDDEN)//Not hidden
-			&& (StrCmp(ffd.cFileName, _T(".")) != 0) && (StrCmp(ffd.cFileName, _T("..")) != 0) )
+		if ((fileAttribute & FILE_ATTRIBUTE_DIRECTORY) //Get only directory and folder
+			&& (fileAttribute != FILE_ATTRIBUTE_HIDDEN) //Not hidden
+			&& (_tcscmp(ffd.cFileName, _T(".")) != 0) && (_tcscmp(ffd.cFileName, _T("..")) != 0)) //Ignore . (curr dir) and .. (parent dir)
 		{
+			//Set file name
 			tvInsert.item.pszText = ffd.cFileName;
 			folderPath = new TCHAR[wcslen(path) + wcslen(ffd.cFileName) + 2];
 
+			//Set path
 			StrCpy(folderPath, path);
 			if (wcslen(path) != 3)
 				StrCat(folderPath, _T("\\"));
 			StrCat(folderPath, ffd.cFileName);
 
 			tvInsert.item.lParam = (LPARAM)folderPath;
+
 			HTREEITEM hItem = TreeView_InsertItem(m_hTreeView, &tvInsert);
 		}
-
-		bFound = FindNextFileW(hFile, &ffd);
-	}
+	} 
+	while (FindNextFileW(hFind, &ffd));
+	
 }
 
-void loadChild(HWND m_hParent, HWND m_hListView, LPCWSTR path, DriveHelper *drive)
+void loadListviewItemAt(LPCWSTR path, HWND m_hParent, HWND m_hListView, DriveHelper *drive)
 {
+	//If path is NULL, quit
 	if (path == NULL)
 		return;
 
-	ListView_DeleteAllItems(m_hListView);
 	LV_ITEM lv;
 
-	if (!StrCmp(path, _T("Desktop")))
+	if (_tcscmp(path, _T("Desktop")) == 0)
 	{
 		//Load Desktop to Listview (My Computer)
-		initListViewColumn(m_hListView, LVCOL_FOLDER_TYPE);
+		initListviewColumn(m_hListView, LVCOL_FOLDER_TYPE);
 
 		lv.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
 		lv.iItem = 0;
@@ -618,36 +606,36 @@ void loadChild(HWND m_hParent, HWND m_hListView, LPCWSTR path, DriveHelper *driv
 		lv.pszText = _T("My Computer");
 		lv.iImage = IDI_MYCOMPUTER;
 		lv.lParam = (LPARAM)_T("MyComputer");
-		ListView_InsertItem(m_hListView, &lv);
+		ListView_InsertItem(m_hListView, &lv); //Inserts a new item in a list-view control
 	}
-	else
-	if (!StrCmp(path, _T("MyComputer")))
+	else if (_tcscmp(path, _T("MyComputer")) == 0)
 	{
-		initListViewColumn(m_hListView, LVCOL_DRIVE_TYPE);
+		//Load My Computer to Listview (Drives, Volume,..)
+		initListviewColumn(m_hListView, LVCOL_DRIVE_TYPE);
 		
-		for (int i = 0; i < drive->GetCount(); ++i)
+		for (int i = 0; i < drive->getCount(); ++i)
 		{
-			//Nạp cột đầu tiên cũng là thông tin chính
+			//Let Listview know that we gonna change it's text, image and param
 			lv.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
 			lv.iItem = i;
 			lv.iImage = DEFAULT_ICON_INDEX;
 
+			//Add label of drives or volume
 			lv.iSubItem = 0;
-			lv.pszText = drive->GetDisplayName(i);
-			lv.lParam = (LPARAM)drive->GetDriveName(i);
+			lv.pszText = drive->getDisplayName(i);
+			lv.lParam = (LPARAM)drive->getDriveLetter(i);
 			ListView_InsertItem(m_hListView, &lv);
 
-			//Nạp các cột còn lại (Type, Size, Free Space)
+			//Load (Type, Size, Free Space)
 			lv.mask = LVIF_TEXT;
 
-			//Cột đầu tiên là Type
+			//Load Drives's Type to second column
 			lv.iSubItem = 1;
 			lv.pszText = drive->getDriveType(i);
-			ListView_SetItem(m_hListView, &lv);
+			ListView_SetItem(m_hListView, &lv); //Sets some or all of a list - view item's attributes.
 
-			//Cột tiếp theo là Size
+			//Load size to third column
 			lv.iSubItem = 2;
-
 			if (wcscmp(drive->getDriveType(i), CD_ROM) != 0)
 				lv.pszText = drive->getTotalSize(i);
 			else
@@ -655,9 +643,8 @@ void loadChild(HWND m_hParent, HWND m_hListView, LPCWSTR path, DriveHelper *driv
 
 			ListView_SetItem(m_hListView, &lv);
 
-			//Cột cuối cùng là Free Space
+			//Load FreeSpace to last column
 			lv.iSubItem = 3;
-
 			if (wcscmp(drive->getDriveType(i), CD_ROM) != 0)
 				lv.pszText = drive->getFreeSpace(i);
 			else
@@ -667,187 +654,165 @@ void loadChild(HWND m_hParent, HWND m_hListView, LPCWSTR path, DriveHelper *driv
 		}
 	}
 	else
-		loadFileAndFolder(g_hWnd,m_hListView,path);
+		loadDirItemToLisview(g_hWnd,m_hListView,path);
 }
 
-void displayCurrSelectedInfo(HWND m_hParent, HWND m_hListView)
+
+void loadOrExecSelected(HWND m_hListView)
 {
-	int nCurSelIndex = ListView_GetNextItem(GetDlgItem(m_hParent, IDL_LISTVIEW), -1, LVNI_FOCUSED);
-	TCHAR *text = new TCHAR[256];
-	LVITEM lv;
-	lv.mask = LVIF_TEXT;
-	lv.iItem = nCurSelIndex;
-	lv.iSubItem = 0;
-	lv.pszText = text;
-	lv.cchTextMax = 256;
-
-	ListView_GetItem(m_hListView, &lv);
-
-	lv.iSubItem = 2;
-	ListView_GetItem(m_hListView, &lv);
-}
-
-LPCWSTR getCurrPath(HWND m_hTreeView)
-{
-	return getPath(TreeView_GetNextItem(m_hTreeView, NULL, TVGN_CARET), m_hTreeView);
-}
-
-void loadCurrSelected(HWND m_hListView)
-{
-	LPCWSTR path = getPath(m_hListView,ListView_GetSelectionMark(m_hListView));
+	LPCWSTR filePath = getPath(m_hListView,ListView_GetSelectionMark(m_hListView));
 
 	WIN32_FIND_DATA fd;
-	GetFileAttributesEx(path, GetFileExInfoStandard, &fd);
 
-	//Nếu là thư mục
-	if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	//Retrieves attributes for a specified file or directory.
+	if (GetFileAttributesEx(filePath, GetFileExInfoStandard, &fd) != 0)
 	{
-		ListView_DeleteAllItems(m_hListView);
-		loadFileAndFolder(g_hWnd,m_hListView,path);
+		//Check whether it's folder or directory
+		if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			//Delete and reload item in Listview
+			ListView_DeleteAllItems(m_hListView);
+			loadDirItemToLisview(g_hWnd, m_hListView, filePath);
+		}
+		else 
+		{
+			//If it's file -> run it
+			//ShellExecute is a function to Open specified file or folder with lpOperation _T("open")
+			//specify "SW_SHOWNORMAL" flag for displaying the window for the first time
+			ShellExecute(NULL, _T("open"), filePath, NULL, NULL, SW_SHOWNORMAL);
+		}
 	}
-	else //Nếu là tập tin thì chạy nó
-		ShellExecute(NULL, _T("open"), path, NULL, NULL, SW_SHOWNORMAL);
 }
 
-void loadFileAndFolder(HWND m_hParent, HWND m_hListView, LPCWSTR path)
+void loadDirItemToLisview(HWND m_hParent, HWND m_hListView, LPCWSTR path)
 {
-	initListViewColumn(m_hListView, LVCOL_FOLDER_TYPE);
+	initListviewColumn(m_hListView, LVCOL_FOLDER_TYPE);
 	TCHAR buffer[10240];
+
+	//Copy path to buffer
 	StrCpy(buffer, path);
 
-	if (wcslen(path) == 3) //Nếu quét các ổ đĩa
+	if (wcslen(path) == 3)
 		StrCat(buffer, _T("*"));
 	else
 		StrCat(buffer, _T("\\*"));
 
-	//Bắt đầu tìm các file và folder trong thư mục
-	WIN32_FIND_DATA fd;
-	HANDLE hFile;
-	BOOL bFound = true;
+	//Variables
+	WIN32_FIND_DATA fd; //Contains information about the file that is found by the FindFirstFile or FindNextFile function
+	HANDLE hFind = INVALID_HANDLE_VALUE;
 	LV_ITEM lv;
+	TCHAR* temporaryPath;
+	int itemIndex = 0;
 
-	TCHAR * folderPath;
-	int nItemCount = 0;
 
-	//Chạy lần thứ nhất lấy các thư mục
-	hFile = FindFirstFileW(buffer, &fd);
-	bFound = TRUE;
+	//Find file and folder in this directory
+	//Get search handle to search folder 
+	hFind = FindFirstFileW(buffer, &fd);
 
-	if (hFile == INVALID_HANDLE_VALUE)
-		bFound = FALSE;
+	//If the function fails or fails to locate files from the search string
+	if (hFind == INVALID_HANDLE_VALUE)
+		return;
 
-	while (bFound)
+	//Iterator
+	do 
 	{
+		//Get only folder
 		if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
 			((fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != FILE_ATTRIBUTE_HIDDEN) &&
-			(StrCmp(fd.cFileName, _T(".")) != 0) && (StrCmp(fd.cFileName, _T("..")) != 0))
+			(_tcscmp(fd.cFileName, _T(".")) != 0) && (_tcscmp(fd.cFileName, _T("..")) != 0)) //Ignore . (curr dir) and .. (parent dir)
 		{
-			folderPath = new TCHAR[wcslen(path) + wcslen(fd.cFileName) + 2];
-			StrCpy(folderPath, path);
+			//Get path of this folder
+			temporaryPath = new TCHAR[wcslen(path) + wcslen(fd.cFileName) + 2];
+			StrCpy(temporaryPath, path);
 
 			if (wcslen(path) != 3)
-				StrCat(folderPath, _T("\\"));
+				StrCat(temporaryPath, _T("\\"));
 
-			StrCat(folderPath, fd.cFileName);
+			StrCat(temporaryPath, fd.cFileName);
 
-			//First column is Name
+
+			//Add name and path to first column
+			//Name: fd.cFileName
+			//Path: (LPARAM)temporaryPath
 			lv.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
-			lv.iItem = nItemCount;
+			lv.iItem = itemIndex;
 			lv.iSubItem = 0;
 			lv.pszText = fd.cFileName;
-			lv.lParam = (LPARAM)folderPath;
 			lv.iImage = DEFAULT_ICON_INDEX;
+			lv.lParam = (LPARAM)temporaryPath;
 			ListView_InsertItem(m_hListView, &lv);
 
 			//Second column is Date Modified
-			ListView_SetItemText(m_hListView, nItemCount, 1, convertTimeStampToString(fd.ftLastWriteTime));
+			//fd.ftLastWriteTime is the number of 100-nanosecond intervals since January 1, 1601 (UTC)
+			ListView_SetItemText(m_hListView, itemIndex, 1, convertTimeStampToString(fd.ftLastWriteTime)); //Changes the text of a list - view item or subitem
 
-			//Third column is Type
-			ListView_SetItemText(m_hListView, nItemCount, 2, _T("File folder"));
+			//Add "File folder" value to Third column
+			ListView_SetItemText(m_hListView, itemIndex, 2, _T("File folder"));
 
 			//Last column is Size
 			//Let check Explorer whether it show size of file or folder
-			
-			++nItemCount;
+
+			//Increase the index
+			itemIndex++;
 		}
 
-		bFound = FindNextFileW(hFile, &fd);
-	}
+		//Continues a file search from a previous call to the FindFirstFileW function
+		//Return non-zero if successfully found, otherwise return zero
+	} 
+	while (FindNextFileW(hFind, &fd));
 
-	DWORD folderCount = nItemCount;
-	/*************************************************************************************/
-	//Chạy lần thứ hai để lấy các tập tin T_T Cách bưởi chưa từng thấy !!! Nhưng không còn cách nào khác
-	TCHAR *filePath;
-	DWORD fileSizeCount = 0;
-	DWORD fileCount = 0;
+	
+	//Get all file in this directory
+	//Get search handle to search file 
+	hFind = FindFirstFileW(buffer, &fd);
+	
+	if (hFind == INVALID_HANDLE_VALUE)
+		return;
 
-	hFile = FindFirstFileW(buffer, &fd);
-	bFound = TRUE;
-
-	if (hFile == INVALID_HANDLE_VALUE)
-		bFound = FALSE;
-
-	while (bFound)
+	//Iterator
+	do 
 	{
 		//Ignore all Directory and Folder
 		if (((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != FILE_ATTRIBUTE_DIRECTORY) &&
 			((fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) != FILE_ATTRIBUTE_SYSTEM) &&
 			((fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != FILE_ATTRIBUTE_HIDDEN))
 		{
-			filePath = new TCHAR[wcslen(path) + wcslen(fd.cFileName) + 2];
-			StrCpy(filePath, path);
+			//Get file path
+			temporaryPath = new TCHAR[wcslen(path) + wcslen(fd.cFileName) + 2];
+			StrCpy(temporaryPath, path);
 
 			if (wcslen(path) != 3)
-				StrCat(filePath, _T("\\"));
+				StrCat(temporaryPath, _T("\\"));
 
-			StrCat(filePath, fd.cFileName);
+			StrCat(temporaryPath, fd.cFileName);
 
-			//Cột thứ nhất là tên hiển thị của tập tin
+			//Add name and path to first column
 			lv.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
-			lv.iItem = nItemCount;
+			lv.iItem = itemIndex;
 			lv.iSubItem = 0;
 			lv.pszText = fd.cFileName;
-			lv.lParam = (LPARAM)filePath;
-		
+			lv.lParam = (LPARAM)temporaryPath;
+
 			ListView_InsertItem(m_hListView, &lv);
 
 			//Second column is Date Modified
-			ListView_SetItemText(m_hListView, nItemCount, 1, convertTimeStampToString(fd.ftLastWriteTime));
+			ListView_SetItemText(m_hListView, itemIndex, 1, convertTimeStampToString(fd.ftLastWriteTime));
 
 			//Third column is Type
-			//ListView_SetItemText(m_hListView, nItemCount, 2, _GetType(fd));
+			//ListView_SetItemText(m_hListView, itemIndex, 2, _GetType(fd));
 
 			//Last column is Size
-			ListView_SetItemText(m_hListView, nItemCount, 3, _GetSize(fd));
-			fileSizeCount += fd.nFileSizeLow;
+			DWORD fileSizeLow = fd.nFileSizeLow; //The low-order DWORD value of the file size, in bytes
+			ListView_SetItemText(m_hListView, itemIndex, 3, CDriveSize::convertByteToStringSize(fileSizeLow));
 
-
-			++nItemCount;
-			++fileCount;
+			itemIndex++;
 		}
-
-		bFound = FindNextFileW(hFile, &fd);
-	}
-
-	TVITEMEX tv;
-	TCHAR *folder = new TCHAR[512];
-	TCHAR *info = new TCHAR[256];
-
-	tv.mask = TVIF_TEXT;
-	tv.hItem = TreeView_GetNextItem(GetDlgItem(m_hParent, IDT_TREEVIEW), NULL, TVGN_CARET);
-	tv.pszText = folder;
-	tv.cchTextMax = 256;
-	TreeView_GetItem(GetDlgItem(m_hParent, IDT_TREEVIEW), &tv);
+	} 
+	while (FindNextFileW(hFind, &fd));
+	
 }
 
-LPWSTR _GetSize(const WIN32_FIND_DATA &fd)
-{
-	DWORD dwSize = fd.nFileSizeLow;
-
-	return CDriveSize::Convert(dwSize);
-}
-
-void initListViewColumn(HWND m_hListView, int type)
+void initListviewColumn(HWND m_hListView, int type)
 {
 	LVCOLUMN lvCol;
 	if (type == LVCOL_DRIVE_TYPE)
@@ -897,7 +862,6 @@ void initListViewColumn(HWND m_hListView, int type)
 
 LPWSTR convertTimeStampToString(const FILETIME &ftLastWrite)
 {
-
 	TCHAR *buffer = new TCHAR[50];
 
 	//The SYSTEMTIME structure represents a date and time using individual members 
@@ -906,6 +870,7 @@ LPWSTR convertTimeStampToString(const FILETIME &ftLastWrite)
 
 	char szLocalDate[255], szLocalTime[255];
 	
+	//The FILETIME Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
 	//To display the FILETIME in a meaningful way, you first need to convert it to a SYSTEMTIME
 	FileTimeToSystemTime(&ftLastWrite, &st);
 	GetDateFormat(LOCALE_USER_DEFAULT, DATE_AUTOLAYOUT, &st, NULL,

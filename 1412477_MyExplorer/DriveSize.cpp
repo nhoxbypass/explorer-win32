@@ -27,11 +27,11 @@ CDriveSize::~CDriveSize()
 }
 
 
-LPWSTR CDriveSize::Convert(__int64 nSize)
+LPWSTR CDriveSize::convertByteToStringSize(__int64 nSize)
 {
 	int nType = 0; //Bytes
 
-	while (nSize >= 1048576) //
+	while (nSize >= 1048576)
 	{
 		nSize /= 1024;
 		++nType;
@@ -41,7 +41,7 @@ LPWSTR CDriveSize::Convert(__int64 nSize)
 
 	if (nSize >= 1024)
 	{
-		//Lấy một chữ số sau thập phân của nSize chứa trong nRight
+		//Get a digit after '.' of nSize in nRight
 		nRight = nSize % 1024;
 
 		while (nRight > 99)
@@ -88,10 +88,10 @@ LPWSTR CDriveSize::Convert(__int64 nSize)
 
 LPWSTR CDriveSize::getTotalSize()
 {
-	return Convert(mTotalSize);
+	return convertByteToStringSize(mTotalSize);
 }
 
 LPWSTR CDriveSize::getFreeSpace()
 {
-	return Convert(mFreeSpace);
+	return convertByteToStringSize(mFreeSpace);
 }
